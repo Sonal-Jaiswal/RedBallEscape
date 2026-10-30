@@ -44,12 +44,11 @@ Ball-Maze-main/
 ├── components/
 │   ├── Ball.tsx
 │   ├── GameOver.tsx
-│   ├── Maze.tsx
-│   └── Victory.tsx
+│   └── Maze.tsx
 ├── utils/
 │   ├── mazeGenerator.ts
-│   ├── soundManager.ts
-│   └── useSound.ts
+│   ├── mazePhysics.ts
+│   └── soundManager.ts
 ├── index.ts
 ├── package.json
 ├── package-lock.json
@@ -80,6 +79,53 @@ npm start
 # or
 yarn start
 ```
+
+## ✅ Tests
+
+```bash
+npm test          # Jest (jest-expo preset)
+npm run typecheck # TypeScript
+```
+
+---
+
+## 📦 Android Release Build
+
+**Requirements:** Node 20+, JDK 17, Android SDK Platform 36 and Build-Tools 35+
+(`sdkmanager "platforms;android-36"`).
+
+The app targets API 36, as Google Play requires for new apps and updates.
+
+### Option A: EAS Build (recommended)
+
+```bash
+npx eas build --platform android --profile production   # produces a signed .aab
+npx eas submit --platform android
+```
+
+EAS stores the upload key and increments `versionCode` remotely (`eas.json`).
+
+### Option B: Local Gradle build
+
+Put the upload-key settings in `~/.gradle/gradle.properties` (never in this repo),
+or export them as environment variables:
+
+```properties
+BALLMAZE_UPLOAD_STORE_FILE=/absolute/path/to/upload-key.jks
+BALLMAZE_UPLOAD_STORE_PASSWORD=...
+BALLMAZE_UPLOAD_KEY_ALIAS=...
+BALLMAZE_UPLOAD_KEY_PASSWORD=...
+```
+
+```bash
+cd android
+./gradlew bundleRelease
+# -> android/app/build/outputs/bundle/release/app-release.aab
+```
+
+If the `BALLMAZE_UPLOAD_*` values are missing, the bundle is built **unsigned** and
+Play will not accept it. Increase `versionCode` in `android/app/build.gradle`
+before every local upload. EAS does this for you.
 
 ---
 

@@ -35,3 +35,28 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# signing credentials (the shared debug keystore is intentionally tracked)
+*.keystore
+!android/app/debug.keystore
+keystore.properties
+
+# environment
+.env
+.env.*
+!.env.example
+
+# build artifacts
+*.apk
+*.aab
+*.idsig
+
+# test output
+coverage/
+
+# editor / machine-specific
+.vscode/
+.idea/
+
+# local-only working notes, audit reports and logs
+docs/

@@ -65,14 +65,21 @@ class SoundManager {
     }
   }
 
-  stopBackgroundMusic() {
+  // Pause/resume ignore the mute flag: muting is applied to the player itself,
+  // so the track must keep its position even while muted.
+  pauseBackgroundMusic() {
     try {
-      if (this.backgroundMusic) {
-        this.backgroundMusic.pause();
-        this.backgroundMusic.seekTo(0);
-      }
+      this.backgroundMusic?.pause();
     } catch (error) {
-      console.error('Error stopping background music:', error);
+      console.warn('Error pausing background music:', error);
+    }
+  }
+
+  resumeBackgroundMusic() {
+    try {
+      this.backgroundMusic?.play();
+    } catch (error) {
+      console.warn('Error resuming background music:', error);
     }
   }
 

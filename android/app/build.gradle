@@ -81,6 +81,13 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+/**
+ * Upload-key signing values come from ~/.gradle/gradle.properties or environment
+ * variables so that no credentials are committed to the repository.
+ */
+def signingValue = { String name -> findProperty(name) ?: System.getenv(name) }
+def uploadKeystore = signingValue('BALLMAZE_UPLOAD_STORE_FILE')
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -102,15 +109,26 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (uploadKeystore) {
+            release {
+                storeFile file(uploadKeystore)
+                storePassword signingValue('BALLMAZE_UPLOAD_STORE_PASSWORD')
+                keyAlias signingValue('BALLMAZE_UPLOAD_KEY_ALIAS')
+                keyPassword signingValue('BALLMAZE_UPLOAD_KEY_PASSWORD')
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // Signed with the upload key when BALLMAZE_UPLOAD_* is configured (see README).
+            // Otherwise the bundle is left unsigned so a debug-signed build can't reach Play.
+            // EAS Build injects its own managed credentials and ignores this block.
+            if (uploadKeystore) {
+                signingConfig signingConfigs.release
+            }
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"

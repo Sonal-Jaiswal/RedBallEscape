@@ -1,164 +1,145 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, Animated, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Dimensions, Animated, TouchableOpacity, AppState } from 'react-native';
 import { Accelerometer } from 'expo-sensors';
 import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import Maze from './components/Maze';
 import Ball from './components/Ball';
 import GameOver from './components/GameOver';
-import Victory from './components/Victory';
 import { generateMaze, Maze as MazeType } from './utils/mazeGenerator';
+import { isOpenCell, isGoalCell } from './utils/mazePhysics';
 import soundManager from './utils/soundManager';
 
 const { width, height } = Dimensions.get('window');
+const MAZE_SIZE = Math.min(width, height) * 0.85;
+const GAME_DURATION_SECONDS = 60;
+const POINTS_PER_MAZE = 100;
+const TILT_SPEED = 15;
+const HIGH_SCORE_KEY = 'highScore';
+
+const startPosition = (maze: MazeType) => {
+  const cellSize = MAZE_SIZE / maze.size;
+  return { x: cellSize / 2, y: cellSize / 2 };
+};
 
 export default function App() {
   const [level, setLevel] = useState(1);
-  const [maze, setMaze] = useState<MazeType>(generateMaze(1));
-  const mazeSize = Math.min(width, height) * 0.85;
-  const cellSize = mazeSize / maze.size;
+  const [maze, setMaze] = useState<MazeType>(() => generateMaze(1));
+  const cellSize = MAZE_SIZE / maze.size;
 
-  const [position, setPosition] = useState({ x: cellSize / 2, y: cellSize / 2 });
-  const [timeLeft, setTimeLeft] = useState(60);
+  const [position, setPosition] = useState(() => startPosition(maze));
+  const [timeLeft, setTimeLeft] = useState(GAME_DURATION_SECONDS);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
-  const [victory, setVictory] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [highScore, setHighScore] = useState(0);
-  const fadeAnim = new Animated.Value(1);
+  const [isAppActive, setIsAppActive] = useState(AppState.currentState === 'active');
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  // Load high score when app starts
+  // The accelerometer callback reads the latest game state from this ref so the
+  // native subscription is created once instead of on every ball movement.
+  const gameRef = useRef({ maze, level, position, isPlaying: !gameOver && isAppActive });
+  gameRef.current = { maze, level, position, isPlaying: !gameOver && isAppActive };
+
   useEffect(() => {
-    const loadHighScore = async () => {
-      try {
-        const savedHighScore = await AsyncStorage.getItem('highScore');
-        if (savedHighScore) {
-          setHighScore(parseInt(savedHighScore));
+    AsyncStorage.getItem(HIGH_SCORE_KEY)
+      .then(saved => {
+        const parsed = Number.parseInt(saved ?? '', 10);
+        if (Number.isFinite(parsed)) {
+          setHighScore(prev => Math.max(prev, parsed));
         }
-      } catch (error) {
-        console.error('Error loading high score:', error);
-      }
-    };
-    loadHighScore();
+      })
+      .catch(error => console.warn('Error loading high score:', error));
   }, []);
 
-  // Update high score when score changes
   useEffect(() => {
-    const updateHighScore = async () => {
-      if (score > highScore) {
-        setHighScore(score);
-        try {
-          await AsyncStorage.setItem('highScore', score.toString());
-        } catch (error) {
-          console.error('Error saving high score:', error);
-        }
-      }
-    };
-    updateHighScore();
-  }, [score]);
-
-  // Function to check if a position is valid (not in a wall)
-  const isValidPosition = (x: number, y: number) => {
-    const col = Math.floor(x / cellSize);
-    const row = Math.floor(y / cellSize);
-    // Check if position is within maze bounds
-    if (col < 0 || col >= maze.size || row < 0 || row >= maze.size) {
-      return false;
-    }
-    // Check if position is in a wall cell
-    if (maze.walls.some(w => w.row === row && w.col === col)) {
-      return false;
-    }
-    return true;
-  };
-
-  // Function to generate a new maze
-  const generateNewMaze = () => {
-    const newLevel = level + 1;
-    const newMaze = generateMaze(newLevel);
-    setMaze(newMaze);
-    setLevel(newLevel);
-    setPosition({ x: cellSize / 2, y: cellSize / 2 });
-  };
+    if (score <= highScore) return;
+    setHighScore(score);
+    AsyncStorage.setItem(HIGH_SCORE_KEY, score.toString())
+      .catch(error => console.warn('Error saving high score:', error));
+  }, [score, highScore]);
 
   useEffect(() => {
-    // Load and start sounds when the app starts
     const setupSounds = async () => {
       await soundManager.loadSounds();
-      await soundManager.startBackgroundMusic();
+      soundManager.startBackgroundMusic();
     };
     setupSounds();
 
-    // Cleanup sounds when the app unmounts
     return () => {
       soundManager.unloadSounds();
     };
   }, []);
 
+  // Pause the clock, controls and music while the app is in the background.
   useEffect(() => {
-    if (gameOver) return;
+    const subscription = AppState.addEventListener('change', state => {
+      setIsAppActive(state === 'active');
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (isAppActive) {
+      soundManager.resumeBackgroundMusic();
+    } else {
+      soundManager.pauseBackgroundMusic();
+    }
+  }, [isAppActive]);
+
+  useEffect(() => {
+    if (gameOver || !isAppActive) return;
     const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setGameOver(true);
-          soundManager.playSound('gameOver');
-          return 0;
-        }
-        return prev - 1;
-      });
+      setTimeLeft(prev => Math.max(prev - 1, 0));
     }, 1000);
     return () => clearInterval(timer);
-  }, [gameOver]);
+  }, [gameOver, isAppActive]);
+
+  useEffect(() => {
+    if (timeLeft === 0 && !gameOver) {
+      setGameOver(true);
+      soundManager.playSound('gameOver');
+    }
+  }, [timeLeft, gameOver]);
 
   useEffect(() => {
     const subscription = Accelerometer.addListener(({ x, y }) => {
-      if (gameOver) return;
+      const current = gameRef.current;
+      if (!current.isPlaying) return;
 
-      let newX = position.x - x * 15;
-      let newY = position.y + y * 15;
+      const currentCellSize = MAZE_SIZE / current.maze.size;
+      const margin = currentCellSize / 2;
+      const newX = Math.max(margin, Math.min(MAZE_SIZE - margin, current.position.x - x * TILT_SPEED));
+      const newY = Math.max(margin, Math.min(MAZE_SIZE - margin, current.position.y + y * TILT_SPEED));
 
-      // Keep ball within maze bounds with a small margin
-      const margin = cellSize / 2;
-      newX = Math.max(margin, Math.min(mazeSize - margin, newX));
-      newY = Math.max(margin, Math.min(mazeSize - margin, newY));
+      if (!isOpenCell(current.maze, currentCellSize, newX, newY)) return;
 
-      // Check if the new position is valid (not in a wall)
-      if (isValidPosition(newX, newY)) {
-        setPosition({ x: newX, y: newY });
-        // Only play move sound if it exists
-        try {
-          soundManager.playSound('move');
-        } catch (error) {
-          // Ignore missing sound error
-        }
-
-        // Check if ball reached the goal
-        const col = Math.floor(newX / cellSize);
-        const row = Math.floor(newY / cellSize);
-        if (row === maze.size - 1 && col === maze.size - 1) {
-          setScore(prev => prev + 100);
-          soundManager.playSound('victory');
-          generateNewMaze();
-        }
-      } else {
-        // Play collision sound only when trying to move into a wall
-        try {
-          soundManager.playSound('collision');
-        } catch (error) {
-          // Ignore missing sound error
-        }
+      if (isGoalCell(current.maze, currentCellSize, newX, newY)) {
+        const nextLevel = current.level + 1;
+        const nextMaze = generateMaze(nextLevel);
+        const nextPosition = startPosition(nextMaze);
+        gameRef.current = { ...current, maze: nextMaze, level: nextLevel, position: nextPosition };
+        setScore(prev => prev + POINTS_PER_MAZE);
+        soundManager.playSound('victory');
+        setMaze(nextMaze);
+        setLevel(nextLevel);
+        setPosition(nextPosition);
+        return;
       }
+
+      const nextPosition = { x: newX, y: newY };
+      gameRef.current = { ...current, position: nextPosition };
+      setPosition(nextPosition);
     });
 
     return () => subscription.remove();
-  }, [position, maze, gameOver]);
+  }, []);
 
   const toggleMute = () => {
-    const newMuteState = soundManager.toggleMute();
-    setIsMuted(newMuteState);
+    setIsMuted(soundManager.toggleMute());
   };
 
   const restartGame = () => {
@@ -178,10 +159,10 @@ export default function App() {
     const newMaze = generateMaze(1);
     setMaze(newMaze);
     setLevel(1);
-    setTimeLeft(60);
+    setTimeLeft(GAME_DURATION_SECONDS);
     setScore(0);
     setGameOver(false);
-    setPosition({ x: cellSize / 2, y: cellSize / 2 });
+    setPosition(startPosition(newMaze));
   };
 
   return (
@@ -189,11 +170,15 @@ export default function App() {
       colors={['#1a1a2e', '#16213e']}
       style={styles.container}
     >
-      <Text style={styles.gameTitle}>Red Ball Escape</Text>
+      <StatusBar style="light" />
+      <Text style={styles.gameTitle} accessibilityRole="header">Red Ball Escape</Text>
 
       <TouchableOpacity
         style={styles.muteButton}
         onPress={toggleMute}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={isMuted ? 'Unmute sound' : 'Mute sound'}
       >
         <Ionicons
           name={isMuted ? 'volume-mute' : 'volume-high'}
@@ -203,9 +188,9 @@ export default function App() {
       </TouchableOpacity>
 
       <Animated.View style={[styles.gameContainer, { opacity: fadeAnim }]}>
-        <Maze maze={maze} />
-        <Ball x={position.x} y={position.y} />
-        <View style={styles.goalContainer}>
+        {/* Ball and goal are positioned in maze coordinates, so they share the maze's box. */}
+        <View style={{ width: MAZE_SIZE, height: MAZE_SIZE }}>
+          <Maze maze={maze} />
           <LinearGradient
             colors={['#ffd700', '#ffa500']}
             style={[
@@ -213,7 +198,6 @@ export default function App() {
               {
                 width: cellSize,
                 height: cellSize,
-                position: 'absolute',
                 left: cellSize * (maze.size - 1),
                 top: cellSize * (maze.size - 1),
               }
@@ -221,29 +205,30 @@ export default function App() {
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
-            <Text style={styles.goalText}>GOAL</Text>
+            <Text style={styles.goalText} numberOfLines={1} adjustsFontSizeToFit>GOAL</Text>
           </LinearGradient>
+          <Ball x={position.x} y={position.y} />
         </View>
       </Animated.View>
 
       <View style={styles.bottomContainer}>
         <View style={styles.hudContainer}>
-          <View style={styles.hudItem}>
+          <View style={styles.hudItem} accessible accessibilityLabel={`Level ${level}`}>
             <Text style={styles.hudLabel}>Level</Text>
             <Text style={styles.hudValue}>{level}</Text>
           </View>
-          <View style={styles.hudItem}>
+          <View style={styles.hudItem} accessible accessibilityLabel={`${timeLeft} seconds left`}>
             <Text style={styles.hudLabel}>Time</Text>
             <Text style={[styles.hudValue, timeLeft <= 10 && styles.timeWarning]}>
               {timeLeft}s
             </Text>
           </View>
-          <View style={styles.hudItem}>
+          <View style={styles.hudItem} accessible accessibilityLabel={`Score ${score}`}>
             <Text style={styles.hudLabel}>Score</Text>
             <Text style={styles.hudValue}>{score}</Text>
           </View>
         </View>
-        <View style={styles.highScoreContainer}>
+        <View style={styles.highScoreContainer} accessible accessibilityLabel={`High score ${highScore}`}>
           <Text style={styles.highScoreLabel}>High Score</Text>
           <Text style={styles.highScoreValue}>{highScore}</Text>
         </View>
@@ -279,7 +264,6 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   gameContainer: {
-    position: 'relative',
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
@@ -304,7 +288,7 @@ const styles = StyleSheet.create({
     minWidth: 80,
   },
   hudLabel: {
-    color: '#8f8f8f',
+    color: '#b0b0b0',
     fontSize: 14,
     marginBottom: 4,
   },
@@ -324,7 +308,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   highScoreLabel: {
-    color: '#8f8f8f',
+    color: '#b0b0b0',
     fontSize: 14,
     marginBottom: 4,
   },
@@ -333,16 +317,8 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
   },
-  goalContainer: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   goal: {
-    width: 60,
-    height: 60,
+    position: 'absolute',
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
@@ -358,6 +334,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 20,
     fontWeight: 'bold',
+    paddingHorizontal: 2,
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,

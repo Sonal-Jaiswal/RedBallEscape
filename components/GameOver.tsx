@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,8 +10,8 @@ interface Props {
 }
 
 const GameOver: React.FC<Props> = ({ onRestart, score, highScore }) => {
-  const scaleAnim = new Animated.Value(0);
-  const opacityAnim = new Animated.Value(0);
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -27,10 +27,10 @@ const GameOver: React.FC<Props> = ({ onRestart, score, highScore }) => {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [scaleAnim, opacityAnim]);
 
   return (
-    <View style={styles.overlay}>
+    <View style={styles.overlay} accessibilityViewIsModal>
       <Animated.View
         style={[
           styles.content,
@@ -54,6 +54,8 @@ const GameOver: React.FC<Props> = ({ onRestart, score, highScore }) => {
             style={styles.button}
             onPress={onRestart}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Restart game"
           >
             <Ionicons name="refresh" size={24} color="#e91e63" style={styles.buttonIcon} />
             <Text style={styles.buttonText}>Restart Game</Text>
