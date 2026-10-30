@@ -1,5 +1,5 @@
 import { generateMaze, Maze } from '../utils/mazeGenerator';
-import { isOpenCell, isGoalCell, canOccupy, moveBall } from '../utils/mazePhysics';
+import { isOpenCell, isGoalCell, canOccupy, moveBall, stepBall, ROLLING, BallState } from '../utils/mazePhysics';
 
 function goalIsReachable(maze: Maze): boolean {
   const walls = new Set(maze.walls.map(w => `${w.row}-${w.col}`));
@@ -87,5 +87,51 @@ describe('ball movement', () => {
     position = moveBall(maze, position, 2, 0, radius);
     position = moveBall(maze, position, 0, 2, radius);
     expect(isGoalCell(maze, 1, position.x, position.y)).toBe(true);
+  });
+});
+
+describe('rolling', () => {
+  const open: Maze = { size: 5, walls: [] };
+  const radius = 0.3;
+  const frame = 1 / 60;
+  const roll = (maze: Maze, ball: BallState, tiltX: number, tiltY: number, seconds: number) => {
+    for (let t = 0; t < seconds; t += frame) ball = stepBall(maze, ball, tiltX, tiltY, frame, radius);
+    return ball;
+  };
+  const start: BallState = { x: 2.5, y: 2.5, vx: 0, vy: 0 };
+
+  it('stays still on a level board, even with sensor noise inside the dead zone', () => {
+    const ball = roll(open, start, ROLLING.deadZone / 2, -ROLLING.deadZone / 2, 1);
+    expect(ball.x).toBe(2.5);
+    expect(ball.y).toBe(2.5);
+  });
+
+  it('picks up speed gradually instead of jumping to full speed', () => {
+    const afterOneFrame = stepBall(open, start, 0.5, 0, frame, radius);
+    const afterHalfSecond = roll(open, start, 0.5, 0, 0.5);
+    expect(afterOneFrame.vx).toBeGreaterThan(0);
+    expect(afterHalfSecond.vx).toBeGreaterThan(afterOneFrame.vx * 10);
+  });
+
+  it('never exceeds the top speed, even at full tilt', () => {
+    const ball = roll({ size: 15, walls: [] }, { x: 0.5, y: 7.5, vx: 0, vy: 0 }, 1, 0, 0.5);
+    expect(Math.hypot(ball.vx, ball.vy)).toBeLessThanOrEqual(ROLLING.maxSpeed * 15 + 1e-9);
+  });
+
+  it('keeps rolling briefly after the board is levelled, then comes to rest', () => {
+    const moving = roll(open, start, 0.5, 0, 0.3);
+    const coasting = roll(open, moving, 0, 0, 0.2);
+    const resting = roll(open, moving, 0, 0, 5);
+    expect(coasting.x).toBeGreaterThan(moving.x);
+    expect(Math.abs(resting.vx)).toBeLessThan(0.01);
+  });
+
+  it('bounces softly off a wall instead of passing through it', () => {
+    const walled: Maze = { size: 5, walls: [{ row: 2, col: 3 }] };
+    // The ball's right edge is 0.01 cells from the wall and this frame would carry it ~0.03 further.
+    const ball = stepBall(walled, { x: 2.69, y: 2.5, vx: 2, vy: 0 }, 0, 0, frame, radius);
+    expect(ball.x + radius).toBeLessThanOrEqual(3);
+    expect(ball.vx).toBeLessThan(0);
+    expect(Math.abs(ball.vx)).toBeLessThan(2 * ROLLING.bounce + 1e-9);
   });
 });

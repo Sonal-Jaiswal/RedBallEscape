@@ -1,24 +1,30 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 interface BallProps {
-  x: number;
-  y: number;
+  // Centre of the ball in cell units, updated every frame without re-rendering.
+  position: Animated.ValueXY;
+  cellSize: number;
   size: number;
 }
 
-const Ball: React.FC<BallProps> = ({ x, y, size }) => {
+const Ball: React.FC<BallProps> = ({ position, cellSize, size }) => {
+  const offset = -size / 2;
   return (
-    <View
+    <Animated.View
       style={[
         styles.ballContainer,
         {
           width: size,
           height: size,
           position: 'absolute',
-          left: x - size / 2,
-          top: y - size / 2,
+          left: 0,
+          top: 0,
+          transform: [
+            { translateX: Animated.add(Animated.multiply(position.x, cellSize), offset) },
+            { translateY: Animated.add(Animated.multiply(position.y, cellSize), offset) },
+          ],
         },
       ]}
     >
@@ -30,7 +36,7 @@ const Ball: React.FC<BallProps> = ({ x, y, size }) => {
       >
         <View style={styles.highlight} />
       </LinearGradient>
-    </View>
+    </Animated.View>
   );
 };
 

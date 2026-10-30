@@ -57,15 +57,70 @@ export function canOccupy(maze: Maze, x: number, y: number, radius: number): boo
   return true;
 }
 
-// Moves the ball by (dx, dy) cell units in steps no longer than half its radius,
-// so fast tilts cannot tunnel through a wall. Each axis is resolved on its own,
-// letting the ball slide along a wall instead of sticking to it.
-export function moveBall(maze: Maze, from: Point, dx: number, dy: number, radius: number): Point {
-  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / (radius / 2)));
+export interface MoveResult extends Point {
+  hitX: boolean;
+  hitY: boolean;
+}
+
+// Moves the ball by (dx, dy) cell units in steps no longer than a quarter of its
+// radius, so fast tilts cannot tunnel through a wall. Each axis is resolved on its
+// own, letting the ball slide along a wall instead of sticking to it.
+export function moveBall(maze: Maze, from: Point, dx: number, dy: number, radius: number): MoveResult {
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / (radius / 4)));
   let { x, y } = from;
+  let hitX = false;
+  let hitY = false;
   for (let i = 0; i < steps; i++) {
-    if (canOccupy(maze, x + dx / steps, y, radius)) x += dx / steps;
-    if (canOccupy(maze, x, y + dy / steps, radius)) y += dy / steps;
+    if (!hitX && canOccupy(maze, x + dx / steps, y, radius)) x += dx / steps;
+    else hitX = true;
+    if (!hitY && canOccupy(maze, x, y + dy / steps, radius)) y += dy / steps;
+    else hitY = true;
   }
-  return { x, y };
+  return { x, y, hitX, hitY };
+}
+
+export interface BallState extends Point {
+  vx: number;
+  vy: number;
+}
+
+// Tuning for how the ball rolls. Distances are in "boards" (one maze width), so the
+// ball feels the same on a 5x5 maze as on a 15x15 one.
+export const ROLLING = {
+  acceleration: 1.6, // boards/s² for each g of tilt
+  maxSpeed: 0.55, // boards/s
+  friction: 1.4, // per second: speed decays by e^(-friction·t) when the board is level
+  bounce: 0.3, // share of speed kept (reversed) after hitting a wall
+  deadZone: 0.03, // g of tilt ignored, so a phone lying flat keeps the ball still
+};
+
+const applyDeadZone = (tilt: number) =>
+  Math.sign(tilt) * Math.max(0, Math.abs(tilt) - ROLLING.deadZone);
+
+// Advances the ball by `seconds`: tilt accelerates it, rolling friction slows it,
+// and walls bounce it back softly. Tilt is in g along the board's x (right) and y (down).
+export function stepBall(
+  maze: Maze,
+  ball: BallState,
+  tiltX: number,
+  tiltY: number,
+  seconds: number,
+  radius: number,
+): BallState {
+  const scale = maze.size; // boards → cells
+  const damping = Math.exp(-ROLLING.friction * seconds);
+  let vx = (ball.vx + applyDeadZone(tiltX) * ROLLING.acceleration * scale * seconds) * damping;
+  let vy = (ball.vy + applyDeadZone(tiltY) * ROLLING.acceleration * scale * seconds) * damping;
+
+  const speed = Math.hypot(vx, vy);
+  const maxSpeed = ROLLING.maxSpeed * scale;
+  if (speed > maxSpeed) {
+    vx *= maxSpeed / speed;
+    vy *= maxSpeed / speed;
+  }
+
+  const moved = moveBall(maze, ball, vx * seconds, vy * seconds, radius);
+  if (moved.hitX) vx = -vx * ROLLING.bounce;
+  if (moved.hitY) vy = -vy * ROLLING.bounce;
+  return { x: moved.x, y: moved.y, vx, vy };
 }

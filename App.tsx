@@ -11,20 +11,20 @@ import Maze from './components/Maze';
 import Ball from './components/Ball';
 import GameOver from './components/GameOver';
 import { generateMaze, Maze as MazeType } from './utils/mazeGenerator';
-import { isGoalCell, moveBall, Point } from './utils/mazePhysics';
+import { isGoalCell, stepBall, BallState } from './utils/mazePhysics';
 import soundManager from './utils/soundManager';
 
 const GAME_DURATION_SECONDS = 60;
 const POINTS_PER_MAZE = 100;
 const HIGH_SCORE_KEY = 'highScore';
 const SENSOR_INTERVAL_MS = 16;
-// Full tilt (1 g) rolls the ball across 60% of the board per second, whatever the maze size.
-const BOARDS_PER_SECOND = 0.6;
+// How much of each new sensor reading is blended into the tilt (low-pass filter against hand tremor).
+const TILT_SMOOTHING = 0.25;
 // Ball radius in cell units; a diameter of 0.6 cells leaves room to pass through any open cell.
 const BALL_RADIUS = 0.3;
 
 // The ball's position is kept in cell units: (0.5, 0.5) is the centre of the top-left cell.
-const START_POSITION: Point = { x: 0.5, y: 0.5 };
+const START_BALL: BallState = { x: 0.5, y: 0.5, vx: 0, vy: 0 };
 
 export default function App() {
   return (
@@ -45,7 +45,6 @@ function Game() {
   const [maze, setMaze] = useState<MazeType>(() => generateMaze(1));
   const cellSize = mazeSize / maze.size;
 
-  const [position, setPosition] = useState<Point>(START_POSITION);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION_SECONDS);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
@@ -54,10 +53,19 @@ function Game() {
   const [isAppActive, setIsAppActive] = useState(AppState.currentState === 'active');
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  // The accelerometer callback reads the latest game state from this ref so the
-  // native subscription is created once instead of on every ball movement.
-  const gameRef = useRef({ maze, level, position, isPlaying: !gameOver && isAppActive });
-  gameRef.current = { maze, level, position, isPlaying: !gameOver && isAppActive };
+  // The ball moves every frame, so its state lives in refs and an Animated value
+  // instead of React state; only level changes re-render the screen.
+  const ballRef = useRef<BallState>(START_BALL);
+  const ballPosition = useRef(new Animated.ValueXY({ x: START_BALL.x, y: START_BALL.y })).current;
+
+  // The frame loop reads the latest game state from this ref so it is started once.
+  const gameRef = useRef({ maze, level, isPlaying: !gameOver && isAppActive });
+  gameRef.current = { maze, level, isPlaying: !gameOver && isAppActive };
+
+  const resetBall = () => {
+    ballRef.current = START_BALL;
+    ballPosition.setValue({ x: START_BALL.x, y: START_BALL.y });
+  };
 
   useEffect(() => {
     AsyncStorage.getItem(HIGH_SCORE_KEY)
@@ -122,39 +130,48 @@ function Game() {
   }, [timeLeft, gameOver]);
 
   useEffect(() => {
+    // The sensor only updates the smoothed tilt; the ball itself is stepped once per
+    // screen frame so its motion stays even when sensor events arrive irregularly.
+    const tilt = { x: 0, y: 0 };
     Accelerometer.setUpdateInterval(SENSOR_INTERVAL_MS);
-    let lastUpdate = Date.now();
-
     const subscription = Accelerometer.addListener(({ x, y }) => {
-      const now = Date.now();
-      // Clamp the time step so a stalled frame can't fling the ball across the board.
-      const seconds = Math.min((now - lastUpdate) / 1000, 0.05);
-      lastUpdate = now;
-
-      const current = gameRef.current;
-      if (!current.isPlaying) return;
-
-      const distance = BOARDS_PER_SECOND * current.maze.size * seconds;
-      const next = moveBall(current.maze, current.position, -x * distance, y * distance, BALL_RADIUS);
-      if (next.x === current.position.x && next.y === current.position.y) return;
-
-      if (isGoalCell(current.maze, 1, next.x, next.y)) {
-        const nextLevel = current.level + 1;
-        const nextMaze = generateMaze(nextLevel);
-        gameRef.current = { ...current, maze: nextMaze, level: nextLevel, position: START_POSITION };
-        setScore(prev => prev + POINTS_PER_MAZE);
-        soundManager.playSound('victory');
-        setMaze(nextMaze);
-        setLevel(nextLevel);
-        setPosition(START_POSITION);
-        return;
-      }
-
-      gameRef.current = { ...current, position: next };
-      setPosition(next);
+      tilt.x += (-x - tilt.x) * TILT_SMOOTHING;
+      tilt.y += (y - tilt.y) * TILT_SMOOTHING;
     });
 
-    return () => subscription.remove();
+    let frame = 0;
+    let lastTime: number | null = null;
+    const tick = (time: number) => {
+      // Clamp the time step so a stalled frame or a resume from background can't fling the ball.
+      const seconds = lastTime === null ? 0 : Math.min((time - lastTime) / 1000, 1 / 30);
+      lastTime = time;
+
+      const current = gameRef.current;
+      if (current.isPlaying && seconds > 0) {
+        const next = stepBall(current.maze, ballRef.current, tilt.x, tilt.y, seconds, BALL_RADIUS);
+
+        if (isGoalCell(current.maze, 1, next.x, next.y)) {
+          const nextLevel = current.level + 1;
+          const nextMaze = generateMaze(nextLevel);
+          gameRef.current = { ...current, maze: nextMaze, level: nextLevel };
+          resetBall();
+          setScore(prev => prev + POINTS_PER_MAZE);
+          soundManager.playSound('victory');
+          setMaze(nextMaze);
+          setLevel(nextLevel);
+        } else {
+          ballRef.current = next;
+          ballPosition.setValue({ x: next.x, y: next.y });
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+
+    return () => {
+      subscription.remove();
+      cancelAnimationFrame(frame);
+    };
   }, []);
 
   const toggleMute = () => {
@@ -181,7 +198,7 @@ function Game() {
     setTimeLeft(GAME_DURATION_SECONDS);
     setScore(0);
     setGameOver(false);
-    setPosition(START_POSITION);
+    resetBall();
   };
 
   return (
@@ -226,7 +243,7 @@ function Game() {
           >
             <Text style={styles.goalText} numberOfLines={1} adjustsFontSizeToFit>GOAL</Text>
           </LinearGradient>
-          <Ball x={position.x * cellSize} y={position.y * cellSize} size={BALL_RADIUS * 2 * cellSize} />
+          <Ball position={ballPosition} cellSize={cellSize} size={BALL_RADIUS * 2 * cellSize} />
         </View>
       </Animated.View>
 
