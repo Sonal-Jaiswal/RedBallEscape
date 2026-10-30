@@ -5,13 +5,8 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash.image.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#1a1a2e",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.vsonaljaiswal.BallMazeEscape"
@@ -19,9 +14,8 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/android.adaptiveIcon.foregroundImage.png",
-        "backgroundColor": "#0A1931"
+        "backgroundColor": "#C42E23"
       },
-      "edgeToEdgeEnabled": true,
       "package": "com.vsonaljaiswal.BallMazeEscape",
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
@@ -45,6 +39,17 @@
         "expo-audio",
         {
           "microphonePermission": false
+        }
+      ],
+      "expo-font",
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.image.png",
+          "imageWidth": 240,
+          "resizeMode": "contain",
+          "backgroundColor": "#A7241D"
         }
       ]
     ]

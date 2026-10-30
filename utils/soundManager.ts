@@ -1,4 +1,7 @@
 import { createAudioPlayer, AudioPlayer } from 'expo-audio';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const MUTED_KEY = 'muted';
 
 class SoundManager {
   private static instance: SoundManager;
@@ -15,24 +18,31 @@ class SoundManager {
     return SoundManager.instance;
   }
 
+  get muted() {
+    return this.isMuted;
+  }
+
   async loadSounds() {
     try {
-      const soundsToLoad: { [key: string]: any } = {
-        victory: require('../assets/sounds/victory.mp3'),
-        gameOver: require('../assets/sounds/gameover.mp3'),
-        background: require('../assets/sounds/background.mp3'),
-      };
-
-      for (const [key, source] of Object.entries(soundsToLoad)) {
-        try {
-          const player = createAudioPlayer(source);
-          this.sounds[key] = player;
-        } catch (error) {
-          console.warn(`Failed to load sound ${key}:`, error);
-        }
-      }
+      this.isMuted = (await AsyncStorage.getItem(MUTED_KEY)) === 'true';
     } catch (error) {
-      console.error('Error loading sounds:', error);
+      console.warn('Error loading mute setting:', error);
+    }
+
+    const soundsToLoad: { [key: string]: number } = {
+      victory: require('../assets/sounds/victory.wav'),
+      gameOver: require('../assets/sounds/gameover.mp3'),
+      background: require('../assets/sounds/background.mp3'),
+    };
+
+    for (const [key, source] of Object.entries(soundsToLoad)) {
+      try {
+        const player = createAudioPlayer(source);
+        player.muted = this.isMuted;
+        this.sounds[key] = player;
+      } catch (error) {
+        console.warn(`Failed to load sound ${key}:`, error);
+      }
     }
   }
 
@@ -50,9 +60,8 @@ class SoundManager {
     }
   }
 
+  // The track loops even while muted so that unmuting picks it up immediately.
   startBackgroundMusic() {
-    if (this.isMuted) return;
-
     try {
       const sound = this.sounds.background;
       if (sound) {
@@ -65,8 +74,6 @@ class SoundManager {
     }
   }
 
-  // Pause/resume ignore the mute flag: muting is applied to the player itself,
-  // so the track must keep its position even while muted.
   pauseBackgroundMusic() {
     try {
       this.backgroundMusic?.pause();
@@ -85,10 +92,11 @@ class SoundManager {
 
   toggleMute() {
     this.isMuted = !this.isMuted;
-    const allSounds = Object.values(this.sounds);
-    for (const sound of allSounds) {
-        sound.muted = this.isMuted;
+    for (const sound of Object.values(this.sounds)) {
+      sound.muted = this.isMuted;
     }
+    AsyncStorage.setItem(MUTED_KEY, String(this.isMuted))
+      .catch(error => console.warn('Error saving mute setting:', error));
     return this.isMuted;
   }
 
@@ -105,4 +113,4 @@ class SoundManager {
   }
 }
 
-export default SoundManager.getInstance(); 
+export default SoundManager.getInstance();

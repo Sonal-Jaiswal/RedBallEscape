@@ -1,14 +1,14 @@
 import React from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 interface BallProps {
   x: number;
   y: number;
-  size?: number;
+  size: number;
 }
 
-const Ball: React.FC<BallProps> = ({ x, y, size = 30 }) => {
+const Ball: React.FC<BallProps> = ({ x, y, size }) => {
   return (
     <View
       style={[

@@ -1,6 +1,6 @@
 # 🎮 Red Ball Escape
 
-**Red Ball Escape** is a fast-paced gyro-controlled maze game built using **React Native + Expo**. Navigate a red ball through dynamically generated mazes, dodge obstacles, and race against time to reach the goal. Designed for mobile devices, the game utilizes the device's gyroscope to create an immersive experience. Beat your own high score and test your reflexes!
+**Red Ball Escape** is a fast-paced tilt-controlled maze game built using **React Native + Expo**. Tilt your phone to roll a red ball through randomly generated mazes and reach the goal before the 60-second clock runs out. Every maze you clear scores 100 points and the next one gets bigger. Beat your own high score and test your reflexes!
 
 ---
 
@@ -26,39 +26,28 @@
 ## 📁 Project Structure
 
 ```yaml
-Ball-Maze-main/
-├── .gitignore
-├── App.tsx
-├── app.json
+RedBallEscape/
+├── App.tsx                 # game screen: timer, score, tilt input, levels
+├── app.json                # Expo config (icons, splash, permissions, plugins)
+├── eas.json                # EAS Build / Submit profiles
 ├── assets/
-│   ├── adaptive-icon.png
-│   ├── favicon.png
-│   ├── icon.png
-│   ├── splash-icon.png
-│   └── sounds/
-│       ├── background.mp3
-│       ├── collision.mp3
-│       ├── gameover.mp3
-│       ├── move.mp3
-│       └── victory.mp3
-├── components/
-│   ├── Ball.tsx
-│   ├── GameOver.tsx
-│   └── Maze.tsx
+│   ├── icon.png, android.adaptiveIcon.foregroundImage.png, splash.image.png
+│   └── sounds/ (background.mp3, gameover.mp3, victory.wav)
+├── components/             # Ball, Maze, GameOver
 ├── utils/
-│   ├── mazeGenerator.ts
-│   ├── mazePhysics.ts
-│   └── soundManager.ts
-├── index.ts
-├── package.json
-├── package-lock.json
-└── tsconfig.json
+│   ├── mazeGenerator.ts    # random solvable mazes, growing with level
+│   ├── mazePhysics.ts      # ball-vs-wall collision and movement
+│   └── soundManager.ts     # music, effects, saved mute setting
+└── __tests__/maze.test.ts
 ```
 
-**Frontend**: React Native (Expo)  
+`android/` and `ios/` are not committed: they are generated from `app.json` by
+`npx expo prebuild` (Expo's Continuous Native Generation).
+
+**Frontend**: React Native 0.88 (Expo SDK 58)  
 **Language**: TypeScript  
-**Motion**: DeviceMotion APIs (Gyroscope)  
-**Sound**: expo-av
+**Motion**: expo-sensors Accelerometer  
+**Sound**: expo-audio
 
 ---
 
@@ -91,50 +80,45 @@ npm run typecheck # TypeScript
 
 ## 📦 Android Release Build
 
-**Requirements:** Node 20+, JDK 17, Android SDK Platform 36 and Build-Tools 35+
-(`sdkmanager "platforms;android-36"`).
+**Requirements:** Node 20+. For local native builds also JDK 17 and Android SDK
+Platform 37 + Build-Tools 37 (`sdkmanager "platforms;android-37.0" "build-tools;37.0.0"`).
 
 The app targets API 36, as Google Play requires for new apps and updates.
 
 ### Option A: EAS Build (recommended)
 
 ```bash
-npx eas build --platform android --profile production   # produces a signed .aab
-npx eas submit --platform android
+npx eas-cli login
+npx eas-cli build --platform android --profile preview      # installable .apk for testing
+npx eas-cli build --platform android --profile production   # signed .aab for Google Play
+npx eas-cli submit --platform android
 ```
 
-EAS stores the upload key and increments `versionCode` remotely (`eas.json`).
+EAS generates and stores the upload key and increments `versionCode` remotely (`eas.json`).
 
-### Option B: Local Gradle build
-
-Put the upload-key settings in `~/.gradle/gradle.properties` (never in this repo),
-or export them as environment variables:
-
-```properties
-BALLMAZE_UPLOAD_STORE_FILE=/absolute/path/to/upload-key.jks
-BALLMAZE_UPLOAD_STORE_PASSWORD=...
-BALLMAZE_UPLOAD_KEY_ALIAS=...
-BALLMAZE_UPLOAD_KEY_PASSWORD=...
-```
+### Option B: Local build
 
 ```bash
-cd android
-./gradlew bundleRelease
-# -> android/app/build/outputs/bundle/release/app-release.aab
+npx eas-cli build --platform android --profile production --local   # signed with your EAS credentials
 ```
 
-If the `BALLMAZE_UPLOAD_*` values are missing, the bundle is built **unsigned** and
-Play will not accept it. Increase `versionCode` in `android/app/build.gradle`
-before every local upload. EAS does this for you.
+or, for a quick test build on a connected device/emulator:
+
+```bash
+npx expo run:android --variant release
+```
+
+A plain `npx expo prebuild && cd android && ./gradlew bundleRelease` signs with the
+debug key, which Google Play rejects. Use EAS for anything you upload.
 
 ---
 
 ## 🧠 Features
 
-- 🔄 Gyroscope-based red ball movement
+- 🔄 Tilt-controlled red ball (accelerometer)
 - 🧱 Auto-generated dynamic mazes
 - ⏱️ Timer + Score + High Score tracking
-- 🔊 Immersive sound effects
+- 🔊 Background music and victory / game-over sounds (mute is remembered)
 - 📱 Mobile-optimized design
 
 ---

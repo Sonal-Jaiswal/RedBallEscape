@@ -1,18 +1,17 @@
-import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Maze } from '../utils/mazeGenerator';
 
 interface MazeProps {
   maze: Maze;
+  mazeSize: number;
 }
 
-const MazeComponent: React.FC<MazeProps> = ({ maze }) => {
-  const { width, height } = Dimensions.get('window');
-  const mazeSize = Math.min(width, height) * 0.85;
+const MazeComponent: React.FC<MazeProps> = ({ maze, mazeSize }) => {
   const cellSize = mazeSize / maze.size;
 
-  const wallSet = new Set(maze.walls.map(w => `${w.row}-${w.col}`));
+  const wallSet = useMemo(() => new Set(maze.walls.map(w => `${w.row}-${w.col}`)), [maze]);
 
   return (
     <View style={[styles.container, { width: mazeSize, height: mazeSize }]}>
@@ -87,4 +86,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MazeComponent;
+// Memoized: the grid only changes per level, not on every ball movement.
+export default React.memo(MazeComponent);

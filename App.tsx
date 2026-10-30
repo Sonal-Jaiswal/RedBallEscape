@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, Animated, TouchableOpacity, AppState } from 'react-native';
+import { View, Text, StyleSheet, Animated, TouchableOpacity, AppState, useWindowDimensions } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Accelerometer } from 'expo-sensors';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -10,27 +11,41 @@ import Maze from './components/Maze';
 import Ball from './components/Ball';
 import GameOver from './components/GameOver';
 import { generateMaze, Maze as MazeType } from './utils/mazeGenerator';
-import { isOpenCell, isGoalCell } from './utils/mazePhysics';
+import { isGoalCell, moveBall, Point } from './utils/mazePhysics';
 import soundManager from './utils/soundManager';
 
-const { width, height } = Dimensions.get('window');
-const MAZE_SIZE = Math.min(width, height) * 0.85;
 const GAME_DURATION_SECONDS = 60;
 const POINTS_PER_MAZE = 100;
-const TILT_SPEED = 15;
 const HIGH_SCORE_KEY = 'highScore';
+const SENSOR_INTERVAL_MS = 16;
+// Full tilt (1 g) rolls the ball across 60% of the board per second, whatever the maze size.
+const BOARDS_PER_SECOND = 0.6;
+// Ball radius in cell units; a diameter of 0.6 cells leaves room to pass through any open cell.
+const BALL_RADIUS = 0.3;
 
-const startPosition = (maze: MazeType) => {
-  const cellSize = MAZE_SIZE / maze.size;
-  return { x: cellSize / 2, y: cellSize / 2 };
-};
+// The ball's position is kept in cell units: (0.5, 0.5) is the centre of the top-left cell.
+const START_POSITION: Point = { x: 0.5, y: 0.5 };
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <Game />
+    </SafeAreaProvider>
+  );
+}
+
+function Game() {
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  // Leave room for the title and HUD above and below the board (matters in landscape on tablets).
+  const availableHeight = height - insets.top - insets.bottom - 280;
+  const mazeSize = Math.max(200, Math.min(width * 0.85, availableHeight));
+
   const [level, setLevel] = useState(1);
   const [maze, setMaze] = useState<MazeType>(() => generateMaze(1));
-  const cellSize = MAZE_SIZE / maze.size;
+  const cellSize = mazeSize / maze.size;
 
-  const [position, setPosition] = useState(() => startPosition(maze));
+  const [position, setPosition] = useState<Point>(START_POSITION);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION_SECONDS);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
@@ -65,6 +80,7 @@ export default function App() {
   useEffect(() => {
     const setupSounds = async () => {
       await soundManager.loadSounds();
+      setIsMuted(soundManager.muted);
       soundManager.startBackgroundMusic();
     };
     setupSounds();
@@ -106,33 +122,36 @@ export default function App() {
   }, [timeLeft, gameOver]);
 
   useEffect(() => {
+    Accelerometer.setUpdateInterval(SENSOR_INTERVAL_MS);
+    let lastUpdate = Date.now();
+
     const subscription = Accelerometer.addListener(({ x, y }) => {
+      const now = Date.now();
+      // Clamp the time step so a stalled frame can't fling the ball across the board.
+      const seconds = Math.min((now - lastUpdate) / 1000, 0.05);
+      lastUpdate = now;
+
       const current = gameRef.current;
       if (!current.isPlaying) return;
 
-      const currentCellSize = MAZE_SIZE / current.maze.size;
-      const margin = currentCellSize / 2;
-      const newX = Math.max(margin, Math.min(MAZE_SIZE - margin, current.position.x - x * TILT_SPEED));
-      const newY = Math.max(margin, Math.min(MAZE_SIZE - margin, current.position.y + y * TILT_SPEED));
+      const distance = BOARDS_PER_SECOND * current.maze.size * seconds;
+      const next = moveBall(current.maze, current.position, -x * distance, y * distance, BALL_RADIUS);
+      if (next.x === current.position.x && next.y === current.position.y) return;
 
-      if (!isOpenCell(current.maze, currentCellSize, newX, newY)) return;
-
-      if (isGoalCell(current.maze, currentCellSize, newX, newY)) {
+      if (isGoalCell(current.maze, 1, next.x, next.y)) {
         const nextLevel = current.level + 1;
         const nextMaze = generateMaze(nextLevel);
-        const nextPosition = startPosition(nextMaze);
-        gameRef.current = { ...current, maze: nextMaze, level: nextLevel, position: nextPosition };
+        gameRef.current = { ...current, maze: nextMaze, level: nextLevel, position: START_POSITION };
         setScore(prev => prev + POINTS_PER_MAZE);
         soundManager.playSound('victory');
         setMaze(nextMaze);
         setLevel(nextLevel);
-        setPosition(nextPosition);
+        setPosition(START_POSITION);
         return;
       }
 
-      const nextPosition = { x: newX, y: newY };
-      gameRef.current = { ...current, position: nextPosition };
-      setPosition(nextPosition);
+      gameRef.current = { ...current, position: next };
+      setPosition(next);
     });
 
     return () => subscription.remove();
@@ -162,7 +181,7 @@ export default function App() {
     setTimeLeft(GAME_DURATION_SECONDS);
     setScore(0);
     setGameOver(false);
-    setPosition(startPosition(newMaze));
+    setPosition(START_POSITION);
   };
 
   return (
@@ -174,7 +193,7 @@ export default function App() {
       <Text style={styles.gameTitle} accessibilityRole="header">Red Ball Escape</Text>
 
       <TouchableOpacity
-        style={styles.muteButton}
+        style={[styles.muteButton, { top: insets.top + 8, right: insets.right + 12 }]}
         onPress={toggleMute}
         hitSlop={8}
         accessibilityRole="button"
@@ -189,8 +208,8 @@ export default function App() {
 
       <Animated.View style={[styles.gameContainer, { opacity: fadeAnim }]}>
         {/* Ball and goal are positioned in maze coordinates, so they share the maze's box. */}
-        <View style={{ width: MAZE_SIZE, height: MAZE_SIZE }}>
-          <Maze maze={maze} />
+        <View style={{ width: mazeSize, height: mazeSize }}>
+          <Maze maze={maze} mazeSize={mazeSize} />
           <LinearGradient
             colors={['#ffd700', '#ffa500']}
             style={[
@@ -207,7 +226,7 @@ export default function App() {
           >
             <Text style={styles.goalText} numberOfLines={1} adjustsFontSizeToFit>GOAL</Text>
           </LinearGradient>
-          <Ball x={position.x} y={position.y} />
+          <Ball x={position.x * cellSize} y={position.y * cellSize} size={BALL_RADIUS * 2 * cellSize} />
         </View>
       </Animated.View>
 
@@ -258,8 +277,6 @@ const styles = StyleSheet.create({
   },
   muteButton: {
     position: 'absolute',
-    top: 40,
-    right: 20,
     zIndex: 1,
     padding: 10,
   },
