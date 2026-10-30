@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity, AppState, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Animated, TouchableOpacity, AppState, PanResponder, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Accelerometer } from 'expo-sensors';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Maze from './components/Maze';
 import Ball from './components/Ball';
 import GameOver from './components/GameOver';
+import StartScreen from './components/StartScreen';
 import { generateMaze, Maze as MazeType } from './utils/mazeGenerator';
 import { isGoalCell, stepBall, BallState } from './utils/mazePhysics';
 import soundManager from './utils/soundManager';
@@ -20,6 +21,8 @@ const HIGH_SCORE_KEY = 'highScore';
 const SENSOR_INTERVAL_MS = 16;
 // How much of each new sensor reading is blended into the tilt (low-pass filter against hand tremor).
 const TILT_SMOOTHING = 0.25;
+// Dragging this far (in px) from where the finger went down counts as full tilt.
+const TOUCH_FULL_TILT_PX = 90;
 // Ball radius in cell units; a diameter of 0.6 cells leaves room to pass through any open cell.
 const BALL_RADIUS = 0.3;
 
@@ -45,6 +48,8 @@ function Game() {
   const [maze, setMaze] = useState<MazeType>(() => generateMaze(1));
   const cellSize = mazeSize / maze.size;
 
+  const [started, setStarted] = useState(false);
+  const [hasTiltSensor, setHasTiltSensor] = useState(true);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION_SECONDS);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
@@ -59,8 +64,34 @@ function Game() {
   const ballPosition = useRef(new Animated.ValueXY({ x: START_BALL.x, y: START_BALL.y })).current;
 
   // The frame loop reads the latest game state from this ref so it is started once.
-  const gameRef = useRef({ maze, level, isPlaying: !gameOver && isAppActive });
-  gameRef.current = { maze, level, isPlaying: !gameOver && isAppActive };
+  const isPlaying = started && !gameOver && isAppActive;
+  const gameRef = useRef({ maze, level, isPlaying });
+  gameRef.current = { maze, level, isPlaying };
+
+  // Touch steering for devices without a usable tilt sensor (emulators, Chromebooks,
+  // a tablet lying on a desk): dragging on the board acts like tilting towards the finger.
+  const touchTilt = useRef({ active: false, x: 0, y: 0 }).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        touchTilt.active = true;
+        touchTilt.x = 0;
+        touchTilt.y = 0;
+      },
+      onPanResponderMove: (_, gesture) => {
+        touchTilt.x = Math.max(-1, Math.min(1, gesture.dx / TOUCH_FULL_TILT_PX));
+        touchTilt.y = Math.max(-1, Math.min(1, gesture.dy / TOUCH_FULL_TILT_PX));
+      },
+      onPanResponderRelease: () => {
+        touchTilt.active = false;
+      },
+      onPanResponderTerminate: () => {
+        touchTilt.active = false;
+      },
+    })
+  ).current;
 
   const resetBall = () => {
     ballRef.current = START_BALL;
@@ -115,12 +146,18 @@ function Game() {
   }, [isAppActive]);
 
   useEffect(() => {
-    if (gameOver || !isAppActive) return;
+    Accelerometer.isAvailableAsync()
+      .then(setHasTiltSensor)
+      .catch(() => setHasTiltSensor(false));
+  }, []);
+
+  useEffect(() => {
+    if (!isPlaying) return;
     const timer = setInterval(() => {
       setTimeLeft(prev => Math.max(prev - 1, 0));
     }, 1000);
     return () => clearInterval(timer);
-  }, [gameOver, isAppActive]);
+  }, [isPlaying]);
 
   useEffect(() => {
     if (timeLeft === 0 && !gameOver) {
@@ -148,7 +185,9 @@ function Game() {
 
       const current = gameRef.current;
       if (current.isPlaying && seconds > 0) {
-        const next = stepBall(current.maze, ballRef.current, tilt.x, tilt.y, seconds, BALL_RADIUS);
+        const tiltX = touchTilt.active ? touchTilt.x : tilt.x;
+        const tiltY = touchTilt.active ? touchTilt.y : tilt.y;
+        const next = stepBall(current.maze, ballRef.current, tiltX, tiltY, seconds, BALL_RADIUS);
 
         if (isGoalCell(current.maze, 1, next.x, next.y)) {
           const nextLevel = current.level + 1;
@@ -225,7 +264,7 @@ function Game() {
 
       <Animated.View style={[styles.gameContainer, { opacity: fadeAnim }]}>
         {/* Ball and goal are positioned in maze coordinates, so they share the maze's box. */}
-        <View style={{ width: mazeSize, height: mazeSize }}>
+        <View style={{ width: mazeSize, height: mazeSize }} {...panResponder.panHandlers}>
           <Maze maze={maze} mazeSize={mazeSize} />
           <LinearGradient
             colors={['#ffd700', '#ffa500']}
@@ -270,6 +309,13 @@ function Game() {
         </View>
       </View>
 
+      {!started && (
+        <StartScreen
+          onStart={() => setStarted(true)}
+          hasTiltSensor={hasTiltSensor}
+          durationSeconds={GAME_DURATION_SECONDS}
+        />
+      )}
       {gameOver && <GameOver onRestart={restartGame} score={score} highScore={highScore} />}
     </LinearGradient>
   );
