@@ -1,47 +1,42 @@
-# Privacy Policy for BallMazeEscape
+# Privacy Policy for Red Ball Escape
 
-**Last updated:** July 25, 2024
+**Last updated:** October 30, 2026
 
-This Privacy Policy describes how your personal information is handled in the BallMazeEscape mobile application (the "App").
+This Privacy Policy explains how the Red Ball Escape mobile game (the "App"), developed by Sonal Jaiswal, handles your information.
 
 ## 1. Information We Collect
 
-We do not collect any personally identifiable information from you. The App uses the device's sensors and local storage for its core functionality, but this data is not collected or transmitted by us.
+We do not collect, store or transmit any personal information. The App has no accounts, no advertising, no analytics and no third-party tracking services, and it does not send any data over the internet.
 
-Specifically, the App uses:
+To work, the App uses only the following, entirely on your device:
 
-*   **Device Sensors (Accelerometer/Gyroscope):** The App uses the device's motion sensors to control the movement of the ball within the maze. This data is processed in real-time on your device and is not stored, collected, or transmitted to us or any third party.
-*   **Local Storage:** The App may use your device's local storage (`AsyncStorage`) to save game progress, high scores, or settings. This data is stored only on your device and is not accessible to us.
+*   **Motion sensor (accelerometer):** The App reads how your device is tilted to roll the ball through the maze. These readings are used in real time and are never stored or transmitted.
+*   **Local storage:** The App saves your high score and your sound on/off setting on your device so they are remembered next time you play. This data never leaves your device.
 
 ## 2. How We Use Your Information
 
-The data accessed by the App is used solely for the following purposes:
-
-*   To provide and maintain the core gameplay functionality (controlling the ball).
-*   To save and retrieve your game state locally on your device.
-
-We do not use this information for any other purpose, such as advertising or analytics.
+The sensor readings and locally saved settings are used only to run the game: moving the ball, showing your high score and remembering whether sound is muted.
 
 ## 3. Information Sharing and Disclosure
 
-We do not collect any personal information, and therefore we do not share any information with third parties. All data used by the App remains on your device.
+Because we do not collect any information, we have nothing to share with, sell to, or disclose to third parties.
 
-## 4. Data Retention
+## 4. Data Retention and Deletion
 
-Data stored locally on your device (like game saves) will remain on your device until you clear the app data or uninstall the App. We do not have access to this data and cannot delete it for you.
+Your high score and sound setting stay on your device until you clear the App's data or uninstall the App, which deletes them. We have no copy of this data.
 
-## 5. Security
+## 5. Permissions
 
-We are committed to ensuring that your information is secure. Since we do not collect or store your personal information on our servers, the security of the data depends on the security of your own device.
+The App does not ask you for any permissions. The Android version declares the standard internet and network-state permissions included by the framework it is built with, but the App does not use them to send or receive any data.
 
 ## 6. Children's Privacy
 
-The App is a simple game suitable for all ages. We do not knowingly collect personally identifiable information from children under the age of 13. If you are a parent or guardian and you are aware that your child has provided us with personal information, please contact us. If we become aware that we have collected personal information from children without verification of parental consent, we will take steps to remove that information.
+The App does not collect personal information from anyone, including children under 13.
 
 ## 7. Changes to This Privacy Policy
 
-We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy within the App or on our app store listing. You are advised to review this Privacy Policy periodically for any changes.
+If this policy changes, the updated version will be posted at this address with a new "Last updated" date.
 
 ## 8. Contact Us
 
-If you have any questions about this Privacy Policy, you can contact us at: vsonaljaiswal@gmail.com
+If you have any questions about this Privacy Policy, contact: vsonaljaiswal@gmail.com
