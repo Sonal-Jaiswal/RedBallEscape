@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Maze } from '../utils/mazeGenerator';
@@ -11,38 +11,28 @@ interface MazeProps {
 const MazeComponent: React.FC<MazeProps> = ({ maze, mazeSize }) => {
   const cellSize = mazeSize / maze.size;
 
-  const wallSet = useMemo(() => new Set(maze.walls.map(w => `${w.row}-${w.col}`)), [maze]);
-
+  // The floor is drawn once and only walls are placed on it: per-cell floor tiles at
+  // fractional sizes overlapped and left hairlines between rows.
   return (
     <View style={[styles.container, { width: mazeSize, height: mazeSize }]}>
       <LinearGradient
         colors={['#2c3e50', '#34495e']}
         style={styles.background}
       />
-      {Array.from({ length: maze.size }, (_, row) => (
-        <View key={row} style={styles.row}>
-          {Array.from({ length: maze.size }, (_, col) => {
-            const isWall = wallSet.has(`${row}-${col}`);
-            return (
-              <View
-                key={col}
-                style={[
-                  styles.cell,
-                  {
-                    width: cellSize,
-                    height: cellSize,
-                  },
-                ]}
-              >
-                {isWall ? (
-                  <View style={styles.wall} />
-                ) : (
-                  <View style={styles.path} />
-                )}
-              </View>
-            );
-          })}
-        </View>
+      <View style={[styles.background, styles.path]} />
+      {maze.walls.map(({ row, col }) => (
+        <View
+          key={`${row}-${col}`}
+          style={[
+            styles.wall,
+            {
+              left: col * cellSize,
+              top: row * cellSize,
+              width: cellSize,
+              height: cellSize,
+            },
+          ]}
+        />
       ))}
     </View>
   );
@@ -64,24 +54,14 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  row: {
-    flexDirection: 'row',
-  },
-  cell: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   wall: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
     backgroundColor: '#000',
     borderWidth: 4,
     borderColor: '#111',
     borderRadius: 4,
   },
   path: {
-    width: '100%',
-    height: '100%',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
 });

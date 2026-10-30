@@ -19,7 +19,7 @@ const StartScreen: React.FC<Props> = ({ onStart, hasTiltSensor, durationSeconds 
           <Ionicons name="phone-portrait-outline" size={26} color="#fff" style={styles.icon} />
           <Text style={styles.text}>
             {hasTiltSensor
-              ? 'Tilt your phone to roll the red ball.'
+              ? 'Hold your phone comfortably, tap Start, then tilt it to roll the red ball.'
               : 'This device has no tilt sensor, so use touch controls.'}
           </Text>
         </View>

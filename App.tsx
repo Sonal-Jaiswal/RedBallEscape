@@ -93,6 +93,15 @@ function Game() {
     })
   ).current;
 
+  // Smoothed accelerometer reading, and the reading taken as "level" when a game starts,
+  // so players can hold the phone at whatever angle is comfortable.
+  const sensorTilt = useRef({ x: 0, y: 0 }).current;
+  const neutralTilt = useRef({ x: 0, y: 0 }).current;
+  const calibrateTilt = () => {
+    neutralTilt.x = sensorTilt.x;
+    neutralTilt.y = sensorTilt.y;
+  };
+
   const resetBall = () => {
     ballRef.current = START_BALL;
     ballPosition.setValue({ x: START_BALL.x, y: START_BALL.y });
@@ -169,11 +178,10 @@ function Game() {
   useEffect(() => {
     // The sensor only updates the smoothed tilt; the ball itself is stepped once per
     // screen frame so its motion stays even when sensor events arrive irregularly.
-    const tilt = { x: 0, y: 0 };
     Accelerometer.setUpdateInterval(SENSOR_INTERVAL_MS);
     const subscription = Accelerometer.addListener(({ x, y }) => {
-      tilt.x += (-x - tilt.x) * TILT_SMOOTHING;
-      tilt.y += (y - tilt.y) * TILT_SMOOTHING;
+      sensorTilt.x += (-x - sensorTilt.x) * TILT_SMOOTHING;
+      sensorTilt.y += (y - sensorTilt.y) * TILT_SMOOTHING;
     });
 
     let frame = 0;
@@ -185,8 +193,8 @@ function Game() {
 
       const current = gameRef.current;
       if (current.isPlaying && seconds > 0) {
-        const tiltX = touchTilt.active ? touchTilt.x : tilt.x;
-        const tiltY = touchTilt.active ? touchTilt.y : tilt.y;
+        const tiltX = touchTilt.active ? touchTilt.x : sensorTilt.x - neutralTilt.x;
+        const tiltY = touchTilt.active ? touchTilt.y : sensorTilt.y - neutralTilt.y;
         const next = stepBall(current.maze, ballRef.current, tiltX, tiltY, seconds, BALL_RADIUS);
 
         if (isGoalCell(current.maze, 1, next.x, next.y)) {
@@ -217,7 +225,13 @@ function Game() {
     setIsMuted(soundManager.toggleMute());
   };
 
+  const startGame = () => {
+    calibrateTilt();
+    setStarted(true);
+  };
+
   const restartGame = () => {
+    calibrateTilt();
     Animated.sequence([
       Animated.timing(fadeAnim, {
         toValue: 0,
@@ -311,7 +325,7 @@ function Game() {
 
       {!started && (
         <StartScreen
-          onStart={() => setStarted(true)}
+          onStart={startGame}
           hasTiltSensor={hasTiltSensor}
           durationSeconds={GAME_DURATION_SECONDS}
         />
