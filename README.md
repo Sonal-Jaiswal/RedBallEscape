@@ -145,7 +145,7 @@ debug key, which Google Play rejects. Use EAS for anything you upload.
 
 ## 📝 License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE).
 
 ---
 
